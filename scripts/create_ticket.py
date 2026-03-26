@@ -45,7 +45,7 @@ def _friendly_error(code: str, detail: str, request_id: str) -> str:
         msg = template.format(detail=detail) if "{detail}" in template else template
     else:
         msg = (
-            f"I wasn't able to create the ticket. The server said: \"{detail}\""
+            f'I wasn\'t able to create the ticket. The server said: "{detail}"'
             if detail
             else "I wasn't able to create the ticket due to an unexpected error. Please try again."
         )
@@ -57,8 +57,10 @@ def _friendly_error(code: str, detail: str, request_id: str) -> str:
 def get_api_key() -> str:
     key = os.environ.get("BF_API_KEY", "").strip()
     if not key:
-        print("The BillFree API key (BF_API_KEY) is not configured. "
-              "Please set it up before creating tickets.")
+        print(
+            "The BillFree API key (BF_API_KEY) is not configured. "
+            "Please set it up before creating tickets."
+        )
         sys.exit(1)
     return key
 
@@ -108,12 +110,20 @@ def create_ticket(
         error_body = e.read().decode("utf-8", errors="replace")
         try:
             err = json.loads(error_body)
-            print(_friendly_error(err.get("code", ""), err.get("error", ""), err.get("requestId", "")))
+            print(
+                _friendly_error(
+                    err.get("code", ""), err.get("error", ""), err.get("requestId", "")
+                )
+            )
         except json.JSONDecodeError:
-            print("I wasn't able to create the ticket because the BillFree server returned an unexpected response. Please try again in a moment.")
+            print(
+                "I wasn't able to create the ticket because the BillFree server returned an unexpected response. Please try again in a moment."
+            )
         return 1
     except urllib.error.URLError:
-        print("I couldn't reach the BillFree server right now. This is likely a temporary network issue — please try again shortly.")
+        print(
+            "I couldn't reach the BillFree server right now. This is likely a temporary network issue — please try again shortly."
+        )
         return 1
 
     if result.get("success"):
@@ -123,8 +133,10 @@ def create_ticket(
         status = ticket_data.get("status", "unknown")
         request_id = ticket_data.get("requestId", "")
 
-        print(f"Your ticket **{ticket_id}** has been created successfully. "
-              f"Our agent **{agent}** has been assigned and will contact you shortly.")
+        print(
+            f"Your ticket **{ticket_id}** has been created successfully. "
+            f"Our agent **{agent}** has been assigned and will contact you shortly."
+        )
         if request_id:
             print(f"\n(Reference ID: {request_id})")
         return 0
