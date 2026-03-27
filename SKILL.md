@@ -1,13 +1,27 @@
 ---
 name: billfree
-description: "BillFree support operations via the BF-TKT API. Use when the user wants to raise a ticket, report an issue, log a complaint, or create a support request related to BillFree services (POS issues, merchant problems, billing concerns, etc.). Collects required information from the user conversationally, then calls the API. Future: get ticket status, update tickets."
+description: "BillFree support operations. Use when the user wants to raise a ticket, report an issue, log a complaint, or create a support request related to BillFree services (POS issues, merchant problems, billing concerns, etc.). Also use when the user wants a summary of the past 6 hours of conversation history in concise WhatsApp-ready bullet points. Collect required information conversationally, then either call the BF-TKT API or summarize recent session history."
 ---
 
 # BillFree Support Skill
 
-Support operations via the BillFree BF-TKT API. Currently supports creating tickets. Collects issue details from the user and raises a ticket programmatically.
+Support operations for BillFree workflows. Currently supports:
+
+1. Creating support tickets via the BillFree BF-TKT API
+2. Summarizing the past 6 hours of conversation history into a WhatsApp-ready update
+
+Choose the workflow based on the user's request. Do not create a ticket when the user only asked for a summary. Do not summarize when the user only asked to create a ticket.
+
+## Quick Reference
+
+| User Need                                 | Action                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| Report issue / raise complaint / log case | Gather required details, then run `scripts/create_ticket.py`           |
+| Summarize recent conversation for WhatsApp | Read the last 6 hours of conversation history and produce bullet points |
 
 ## Workflow
+
+### Workflow A: Create a Ticket
 
 1. **Gather information** from the user's message
 2. **Check required fields** — ask follow-up if anything is missing
@@ -79,6 +93,114 @@ python3 scripts/create_ticket.py \
 If the error code is `E001` (rate limit), wait 60 seconds before retrying.
 If the error code is `E004` (validation), check the fields and correct them.
 
+### Workflow B: Summarize the Past 6 Hours for WhatsApp
+
+Use this workflow when the user asks for a summary, recap, update, handoff, or WhatsApp-ready message based on recent conversation history.
+
+#### Goal
+
+Generate a concise WhatsApp message in bullet points covering the most important topics discussed in the past 6 hours.
+
+#### Where to Get the Conversation History
+
+Prefer deterministic session extraction over asking the user to repeat the conversation.
+
+OpenClaw stores the source of truth on disk:
+
+- Session store: `~/.openclaw/agents/<agentId>/sessions/sessions.json`
+- Transcript: `~/.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl`
+
+The recommended path for this skill is to run the bundled extractor script first, then summarize its output:
+
+```bash
+python3 scripts/extract_recent_conversation.py --session-key "<current-session-key>" --hours 6
+```
+
+Useful variants:
+
+```bash
+# Target a specific session directly
+python3 scripts/extract_recent_conversation.py --session-key "agent:main:whatsapp:direct:+9185..." --hours 6
+
+# Filter by channel + peer when you know the scope exactly
+python3 scripts/extract_recent_conversation.py --channel whatsapp --peer "+9185..." --hours 6
+
+# Emit JSON if structured post-processing is needed
+python3 scripts/extract_recent_conversation.py --session-key "<current-session-key>" --hours 6 --json
+```
+
+How the extractor works:
+
+1. Reads `sessions.json`
+2. Resolves the active matching session
+3. Opens the referenced transcript JSONL
+4. Filters messages to the last 6 hours
+5. Removes OpenClaw session boilerplate and metadata wrappers
+6. Prints a clean transcript for summarization
+
+Safety rules:
+
+- Prefer the exact current `sessionKey`
+- For group chats, use that group's exact session key, for example `agent:<agentId>:whatsapp:group:<groupId>`
+- For direct chats under `dmScope: "per-channel-peer"`, use the exact per-peer key, for example `agent:<agentId>:whatsapp:direct:<peerId>`
+- The extractor refuses to guess from a broad "most recent session" fallback
+- The extractor also refuses to read the shared `agent:<agentId>:main` session unless `--allow-main` is explicitly passed
+
+Only fall back to direct context-only summarization if the script cannot access the OpenClaw state files. Do not ask the user to paste the conversation unless both the state files and the relevant working context are unavailable.
+
+#### Time Window
+
+- Only summarize messages from the last 6 hours
+- Use transcript entry timestamps when available
+- If the available session contains older content, ignore messages outside the 6-hour window
+- Base the summary on the extractor output, not on vague recollection of earlier turns
+
+#### What to Include
+
+Focus on the information that matters in an operational WhatsApp update:
+
+- Main topics discussed
+- Customer or merchant issues raised
+- Decisions made
+- Actions taken
+- Pending follow-ups
+- Blockers, risks, or unresolved items
+- Important identifiers only when relevant, such as ticket IDs, merchant IDs, POS IDs, or callback numbers
+
+#### What to Exclude
+
+- Small talk and filler
+- Repetitive back-and-forth that does not change the outcome
+- Internal tool chatter, raw metadata, or JSON
+- Speculation not supported by the conversation
+
+#### Output Format
+
+The final output must be ready to send as a WhatsApp message.
+
+Rules:
+
+- Keep it concise and readable on mobile
+- Use bullet points only
+- Cover important topics first
+- Prefer 4 to 8 bullets unless the conversation was extremely light or unusually dense
+- Use plain language
+- Do not include headings like "analysis" or "summary generated"
+- Do not mention internal APIs, session IDs, or tool names in the message body
+
+Use this format:
+
+```text
+*Last 6 Hours Summary*
+
+• [Important topic / update]
+• [Important topic / update]
+• [Decision / action taken]
+• [Pending follow-up / blocker]
+```
+
+If there was very little meaningful activity, say so clearly in bullet points instead of inventing content.
+
 ## Setup
 
 The `BF_API_KEY` environment variable must be set with the BillFree API key.
@@ -95,4 +217,4 @@ The `BF_API_KEY` environment variable must be set with the BillFree API key.
 
 ## API Documentation
 
-For full API details, see [BF-Tkt API_DOCUMENTATION.md](BF-Tkt API_DOCUMENTATION.md).
+For full API details, see [BF-Tkt API_DOCUMENTATION.md](_temp/BF-Tkt API_DOCUMENTATION.md).
